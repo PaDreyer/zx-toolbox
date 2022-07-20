@@ -47,8 +47,6 @@ async function errorHandler(message, fatal = false) {
             console.log("command: ", commands[command]);
             const executable = commands[command].substr(0, commands[command].indexOf(" "));
             const args = commands[command].substr(commands[command].indexOf(" ")+1).split(" ");
-            console.log("executable: ", executable);
-            console.log("args: ", args);
             await $`${executable} ${args}`
         }
         process.exit(1);
