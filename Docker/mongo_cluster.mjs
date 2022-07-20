@@ -1,22 +1,10 @@
 #!/usr/bin/env zx
 import { spawn } from 'child_process';
-import { Duplex, Transform } from 'stream';
 
 $.verbose = false;
 
-function spinner(title, callback) {
-    let i = 0; Stream.create
-    let shouldSpin = true;
-    const channel = new Duplex();
-    const channel = new Transform()
-    channel._transform = function(
-                chunk, //: Buffer | string,
-                encoding, //: string,
-                callback //(error: data?: Buffer | string) => void
-        ) {
-        callback(null, chunk);
-    }
-
+function spinner(title, callback, doneMsg) {
+    let i = 0;
     const spin = () => process.stderr.write(`  ${'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[i++ % 10]} ${title}\r`);
 
     return within(async () => {
@@ -27,7 +15,7 @@ function spinner(title, callback) {
             result = await callback()
         } finally {
             clearInterval(id);
-            process.stdout.write(title + "\n");
+            process.stderr.write(("[DONE]   " + (doneMsg ?? title) + " ".repeat(200)).slice(0, 200) + "\n");
         }
         return result
     })
@@ -60,7 +48,7 @@ let mongoDataDir = await question("Which absolute directory should be used for y
 if(mongoDataDir === "") mongoDataDir = path.normalize(path.join(os.homedir(), ".containers/mongo-cluster"));
 const workerDataDirName = "mongo";
 
-await spinner("Creating directory...", async() => $`mkdir -p ${path.normalize(mongoDataDir)}`);
+await spinner("Creating directory...", async() => $`mkdir -p ${path.normalize(mongoDataDir)}`, "Directory created");
 
 const keyFilePath = path.normalize(path.join(mongoDataDir, "keyfile.key"));
 await $`sudo openssl rand -base64 756 > ${keyFilePath}`.catch(e => console.log(e));
@@ -90,9 +78,9 @@ spinner("Creating containers.....", async () => {
         })
         await $`sudo docker run -d --net ${mongoNetworkName} -p ${workerPort}:${workerPort} --restart always --name ${workerName} -v ${workerPathDir}:/data/db ${mongoImage} mongod --replSet ${replSetName} --port ${workerPort} --bind_ip 0.0.0.0`
     }
-})
+}, "All container created")
 
-await spinner("Waiting for containers to get started....", () => sleep(5000));
+await spinner("Waiting for containers to get started....", () => sleep(5000), "All container started");
 
 const userConfig = {
     user: adminUser,
@@ -106,19 +94,16 @@ fs.writeFileSync("./script.js", js);
 await spinner("Copying replica config files to container and setup...", async() => {
     await $`docker cp ./script.js ${dockerNames[0]}:/setup.js`;
     await $`docker exec ${dockerNames[0]} mongosh -f /setup.js`;
-})
+}, "Replica config copied and applied")
 fs.rmSync("./script.js");
 
-// await $`docker cp ./script.js ${dockerNames[0]}:/setup.js`;
-// await $`docker exec ${dockerNames[0]} mongosh -f /setup.js`;
-
-await spinner("Waiting for first container to get primary....", () => sleep(25000));
+await spinner("Waiting for first container to get primary....", () => sleep(25000), "First container successfully primary leader");
 
 fs.writeFileSync("./script.js", `user=${JSON.stringify(userConfig)};db.createUser(user);`);
 await spinner("Copying user config files to container and setup...",  async() => {
     await $`docker cp ./script.js ${dockerNames[0]}:/setup.js`;
     await $`docker exec ${dockerNames[0]} mongosh -f /setup.js`;
-})
+}, "User config copied and applied")
 fs.rmSync("./script.js");
 
 console.log("Everything set up. Have fun!");
